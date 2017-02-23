@@ -3,4 +3,4 @@ You know what really grinds my gears? When I have a sprinkler leak in the back y
 
 
 <img src="http://i.imgur.com/lEcrOc5.jpg">
-*Yeah, that's the final install... ;)*
+*Nice case, eh?*
