@@ -1,24 +1,17 @@
-/*
-   Todos:
-    - Play with table
-    - Play with timers
-    - HARDWARE: 6-channel relays are hard to find (unless on Amazon for more $). If going the Ali route, get one 4-ch and one 2-ch, then replace pin connections with terminal!
-*/
-
 #include <SimpleTimer.h>
 #define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
-#include <ESP8266WiFi.h>
 #include <BlynkSimpleEsp8266.h>
 
-#include <TimeLib.h>            // Used by WidgetRTC.h
-#include <WidgetRTC.h>          // Blynk's RTC
+// Required for Blynk's RTC
+#include <TimeLib.h>
+#include <WidgetRTC.h>
 
-#include <ESP8266mDNS.h>        // Required for OTA
-#include <WiFiUdp.h>            // Required for OTA
-#include <ArduinoOTA.h>         // Required for OTA
+// Required for OTA
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 
-char auth[] = "fromBlynkApp";
-
+const char* auth = "fromBlynkApp";
 const char* ssid = "ssid";
 const char* pw = "pw";
 
@@ -26,7 +19,7 @@ SimpleTimer timer;
 WidgetRTC rtc;
 WidgetTerminal terminal(V100);
 
-bool firstStart = 0;
+bool firstStart;
 int zone1 = 13;                     // WeMos D1 Mini Pro pin D7 (Sprinklers south)
 int zone2 = 5;                      // WeMos D1 Mini Pro pin D1 (Sprinklers north)
 int zone3 = 4;                      // WeMos D1 Mini Pro pin D2 (Bubblers front)
@@ -41,6 +34,20 @@ int bubblerRunLimit = 1800000L;     // Millis that bubblers can run before auto 
 int zone12minFlag = 0;
 
 bool checkinFlag;
+
+unsigned long softStartZone1stage1 = 2147483647;
+unsigned long softStartZone1stage2 = 2147483647;
+unsigned long softStartZone1stage3 = 2147483647;
+unsigned long softStopZone1stage1 = 2147483647;
+unsigned long softStopZone1stage2 = 2147483647;
+unsigned long softStopZone1stage3 = 2147483647;
+
+unsigned long softStartZone2stage1 = 2147483647;
+unsigned long softStartZone2stage2 = 2147483647;
+unsigned long softStartZone2stage3 = 2147483647;
+unsigned long softStopZone2stage1 = 2147483647;
+unsigned long softStopZone2stage2 = 2147483647;
+unsigned long softStopZone2stage3 = 2147483647;
 
 void setup()
 {
@@ -96,8 +103,12 @@ void setup()
 
   timer.setInterval(2500L, timeMachine);
   timer.setInterval(5000L, overflowProtect);
-  timer.setInterval(1000L, zone12min);
+  //timer.setInterval(1000L, zone12min);
   timer.setInterval(1000L, runTimer);
+  timer.setInterval(1000L, softStartZone1);
+  timer.setInterval(1000L, softStopZone1);
+  timer.setInterval(1000L, softStartZone2);
+  timer.setInterval(1000L, softStopZone2);
 
   Blynk.syncAll();
 }
@@ -108,12 +119,125 @@ void loop()
   timer.run();
   ArduinoOTA.handle();
 
-  if (second() == 0 && checkinFlag == 0) {
-    Blynk.setProperty(V0, "label", String("Set Manual Run - ") + currentTimeDate);
-    checkinFlag = 1;
+  if (second() == 0 && !checkinFlag) {
+    Blynk.setProperty(V0, "label", String("Set Manual Run                  ") + currentTimeDate);
+    checkinFlag = true;
   }
   else if (second() == 2) {
-    checkinFlag = 0;
+    checkinFlag = false;
+  }
+}
+
+// Sprinkler soft start and stop to reduce water hammer
+void softStartZone1() {
+
+  if (softStartZone1stage1 <= now() && softStartZone1stage2 >= now())  // Start bubbler to help reduce water hammer... between 0 and 3 seconds
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStartZone1stage2 <= now() && softStartZone1stage3 >= now())   // then overlap with start of spinklers... between 3 and 6 seconds
+  {
+    digitalWrite(zone1, HIGH);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStartZone1stage3 <= now())   // then turn off bubblers... at 6 seconds
+  {
+    digitalWrite(zone1, HIGH);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, LOW);
+    digitalWrite(zone4, LOW);
+    softStartZone1stage1 = 2147483647;
+    softStartZone1stage2 = 2147483647;
+    softStartZone1stage3 = 2147483647;
+  }
+}
+
+void softStopZone1() {
+
+  if (softStopZone1stage1 <= now() && softStopZone1stage2 >= now())
+  {
+    digitalWrite(zone1, HIGH);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStopZone1stage2 <= now() && softStopZone1stage3 >= now())
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStopZone1stage3 <= now())
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, LOW);
+    digitalWrite(zone4, LOW);
+    softStopZone1stage1 = 2147483647;
+    softStopZone1stage2 = 2147483647;
+    softStopZone1stage3 = 2147483647;
+  }
+}
+
+void softStartZone2() {
+
+  if (softStartZone2stage1 <= now() && softStartZone2stage2 >= now())
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStartZone2stage2 <= now() && softStartZone2stage3 >= now())
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, HIGH);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStartZone2stage3 <= now())
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, HIGH);
+    digitalWrite(zone3, LOW);
+    digitalWrite(zone4, LOW);
+    softStartZone2stage1 = 2147483647;
+    softStartZone2stage2 = 2147483647;
+    softStartZone2stage3 = 2147483647;
+  }
+}
+
+void softStopZone2() {
+
+  if (softStopZone2stage1 <= now() && softStopZone2stage2 >= now())  // Start bubbler to help reduce water hammer... between 0 and 2 seconds
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, HIGH);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStopZone2stage2 <= now() && softStopZone2stage3 >= now())   // then turn off spinklers... between 3 and 5 seconds
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+  }
+  if (softStopZone2stage3 <= now())   // then turn off bubblers... at 6 seconds
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, LOW);
+    digitalWrite(zone4, LOW);
+    softStopZone2stage1 = 2147483647;
+    softStopZone2stage2 = 2147483647;
+    softStopZone2stage3 = 2147483647;
   }
 }
 
@@ -127,14 +251,35 @@ BLYNK_WRITE(V2)
   }
 }
 
+int id = 0;
+
+void lastZoneClear() {
+  lastZone == NULL;
+}
+
 BLYNK_WRITE(V0) {
   switch (param.asInt())
   {
     case 1: {                       // OFF
-        digitalWrite(zone1, LOW);
-        digitalWrite(zone2, LOW);
-        digitalWrite(zone3, LOW);
-        digitalWrite(zone4, LOW);
+
+        if (lastZone == "Zone 1") {
+          softStopZone1stage1 = now();
+          softStopZone1stage2 = now() + 4;
+          softStopZone1stage3 = now() + 8;
+          timer.setTimeout(3000L, lastZoneClear);
+        }
+        else if (lastZone == "Zone 2") {
+          softStopZone2stage1 = now();
+          softStopZone2stage2 = now() + 4;
+          softStopZone2stage3 = now() + 8;
+          timer.setTimeout(3000L, lastZoneClear);
+        }
+        else {
+          digitalWrite(zone1, LOW);
+          digitalWrite(zone2, LOW);
+          digitalWrite(zone3, LOW);
+          digitalWrite(zone4, LOW);
+        }
 
         if (runStart > 0)
         {
@@ -142,16 +287,24 @@ BLYNK_WRITE(V0) {
           terminal.println(String(lastZone) + " ran for " + ((runEnd - runStart) / 60000) + "m " + (((runEnd - runStart) / 1000) - (((runEnd - runStart) / 60000) * 60)) + "s.");
           terminal.flush();
         }
+
         runStart = 0;
         Blynk.setProperty(V1, "color", "#808080");
 
         break;
       }
-    case 2: {                       // Zone 1
-        digitalWrite(zone1, HIGH);
-        digitalWrite(zone2, LOW);
-        digitalWrite(zone3, LOW);
-        digitalWrite(zone4, LOW);
+    case 2: {                       // Zone 1 (sprinklers south)
+
+        softStartZone1stage1 = now();
+        softStartZone1stage2 = now() + 3;
+        softStartZone1stage3 = now() + 6;
+
+        /*
+          digitalWrite(zone1, HIGH);
+          digitalWrite(zone2, LOW);
+          digitalWrite(zone3, LOW);
+          digitalWrite(zone4, LOW);
+        */
 
         if (runStart > 0)
         {
@@ -169,7 +322,7 @@ BLYNK_WRITE(V0) {
 
         break;
       }
-    case 3: {                       // Zone 2
+    case 3: {                       // Zone 2 (sprinklers north)
         digitalWrite(zone1, LOW);
         digitalWrite(zone2, HIGH);
         digitalWrite(zone3, LOW);
@@ -191,7 +344,7 @@ BLYNK_WRITE(V0) {
 
         break;
       }
-    case 4: {                       // Zone 3
+    case 4: {                       // Zone 3 (drip front)
         digitalWrite(zone1, LOW);
         digitalWrite(zone2, LOW);
         digitalWrite(zone3, HIGH);
@@ -213,7 +366,7 @@ BLYNK_WRITE(V0) {
 
         break;
       }
-    case 5: {                       // Zone 4
+    case 5: {                       // Zone 4 (drip back)
         digitalWrite(zone1, LOW);
         digitalWrite(zone2, LOW);
         digitalWrite(zone3, LOW);
@@ -236,26 +389,27 @@ BLYNK_WRITE(V0) {
         break;
       }
 
-    case 6: {
-        zone12minFlag = 1;
+    /*
+        case 6: {
+            zone12minFlag = 1;
 
-        if (runStart > 0)
-        {
-          runEnd = millis();
-          terminal.println(String(lastZone) + " ran for " + ((runEnd - runStart) / 60000) + "m " + (((runEnd - runStart) / 1000) - (((runEnd - runStart) / 60000) * 60)) + "s.");
-          terminal.flush();
-        }
+            if (runStart > 0)
+            {
+              runEnd = millis();
+              terminal.println(String(lastZone) + " ran for " + ((runEnd - runStart) / 60000) + "m " + (((runEnd - runStart) / 1000) - (((runEnd - runStart) / 60000) * 60)) + "s.");
+              terminal.flush();
+            }
 
-        terminal.println(String(currentTimeDate) + " - 2+2 mode has started.");
-        terminal.flush();
+            terminal.println(String(currentTimeDate) + " - 2+2 mode has started.");
+            terminal.flush();
 
-        runStart = millis();
-        lastZone = "2+2 mode";
-        Blynk.setProperty(V1, "color", "#04C0F8");
+            runStart = millis();
+            lastZone = "2+2 mode";
+            Blynk.setProperty(V1, "color", "#04C0F8");
 
-        break;
-      }
-
+            break;
+          }
+    */
     default: {
         break;
       }
@@ -274,34 +428,61 @@ void runTimer() {
   }
 }
 
-void zone12min() {
-  if (zone12minFlag == 1)
+/*
+  // Runs zone 1 for X minutes, then zone 2 for X minutes, then shuts off.
+  void zone12min() {
+  if (zone12minFlag == 1)                                         // Start bubbler to help reduce water hammer...
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+    zone12minFlag = 2;
+  }
+  else if (zone12minFlag == 2 && millis() >= (runStart + 3000))   // then overlap with start of spinklers...
+  {
+    digitalWrite(zone1, HIGH);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+    zone12minFlag = 3;
+  }
+  else if (zone12minFlag == 3 && millis() >= (runStart + 6000))   // then turn off bubblers.
   {
     digitalWrite(zone1, HIGH);
     digitalWrite(zone2, LOW);
     digitalWrite(zone3, LOW);
     digitalWrite(zone4, LOW);
-    zone12minFlag = 2;
+    zone12minFlag = 4;
   }
-  else if (zone12minFlag == 2 && millis() >= (runStart + 120000))
+  else if (zone12minFlag == 4 && millis() >= (runStart + 243000)) // Switch zones (the nature of the valves opening/closeing should introduce some overlap)
   {
     digitalWrite(zone1, LOW);
     digitalWrite(zone2, HIGH);
     digitalWrite(zone3, LOW);
     digitalWrite(zone4, LOW);
-    zone12minFlag = 3;
+    zone12minFlag = 5;
   }
-  else if (zone12minFlag == 3 && millis() >= (runStart + 240000))
+    else if (zone12minFlag == 5 && millis() >= (runStart + 480000)) // Turn bubblers back on to absorb water hammer again while turning off spinklers.
+  {
+    digitalWrite(zone1, LOW);
+    digitalWrite(zone2, LOW);
+    digitalWrite(zone3, HIGH);
+    digitalWrite(zone4, LOW);
+    zone12minFlag = 6;
+  }
+  else if (zone12minFlag == 6 && millis() >= (runStart + 483000))
   {
     digitalWrite(zone1, LOW);
     digitalWrite(zone2, LOW);
     digitalWrite(zone3, LOW);
     digitalWrite(zone4, LOW);
     zone12minFlag = 0;
-    Blynk.virtualWrite(V0, 1);
+    Blynk.virtualWrite(V0, 1); // Do i need or want to add the pick code that I did for thc? Is this not working to clear the menu? Do I really need/want to syncAll here?!
     Blynk.syncAll();
   }
-}
+  }
+*/
 
 void timeMachine() {
   if (year() != 1970) {
@@ -320,7 +501,7 @@ void timeMachine() {
     }
   }
 
-  if (firstStart == 0 && year() != 1970) {
+  if (!firstStart && year() != 1970) {
     terminal.println("");
     terminal.println("");
     terminal.println("");
@@ -335,7 +516,7 @@ void timeMachine() {
     terminal.println("");
     terminal.println("");
     terminal.flush();
-    firstStart = 1;
+    firstStart = true;
 
   }
 }
