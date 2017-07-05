@@ -29,8 +29,8 @@ int runStart;                       // Millis that zone started
 int runEnd;                         // Millis that zone ended
 String lastZone;                    // Last zone that ran
 String currentTimeDate;             // Formatted 12:15pm 2/15
-int sprinklerRunLimit = 600000L;    // Millis that sprinkler can run before auto shutoff to protect from forgotton manual operation
-int bubblerRunLimit = 1800000L;     // Millis that bubblers can run before auto shutoff
+int sprinklerRunLimit = 900000L;    // Millis that sprinkler can run before auto shutoff to protect from forgotton manual operation
+int bubblerRunLimit = 3600000L;     // Millis that bubblers can run before auto shutoff
 int zone12minFlag = 0;
 
 bool checkinFlag;
@@ -52,6 +52,7 @@ unsigned long softStopZone2stage3 = 2147483647;
 void setup()
 {
   Serial.begin(9600);
+  WiFi.hostname("irrigationControl");
   Blynk.begin(auth, ssid, pw);
 
   //WiFi.softAPdisconnect(true); // Per https://github.com/esp8266/Arduino/issues/676 this turns off AP
